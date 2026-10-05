@@ -5,6 +5,9 @@ export const metadata: Metadata = {
   title: "InstaGrab — Instagram Video & Reels Downloader",
   description: "Download Instagram reels, videos, stories, and photos in HD quality. Free, fast, no login required, and no watermarks.",
   keywords: "instagram downloader, instagram video downloader, instagram reels downloader, download instagram video, save instagram reels",
+  verification: {
+    google: "gA1z489T5ED-iIiVDwNJTJNVSoG831qwDKHpSUd4Ww4",
+  },
 };
 
 export default function RootLayout({
