@@ -50,7 +50,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         working-directory: frontend
 
       - name: Build
@@ -82,14 +82,14 @@ jobs:
             # Backend
             echo "📦 Installing backend dependencies..."
             cd backend
-            npm ci --production
+            npm install --omit=dev
             npm run build
             cd ..
 
             # Frontend
             echo "📦 Installing frontend dependencies..."
             cd frontend
-            npm ci
+            npm install
             NEXT_PUBLIC_API_URL=/api npm run build
             cd ..
 
