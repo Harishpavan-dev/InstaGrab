@@ -15,7 +15,7 @@ export default function Home() {
             <span className="text-xl font-extrabold tracking-tight">
               <span className="text-purple-600">Insta</span>
               <span className="text-gray-800">Grab</span>
-              <span className="text-gray-400 font-normal text-sm">.app</span>
+            
             </span>
           </div>
           <div className="flex items-center gap-4">
