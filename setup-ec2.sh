@@ -28,9 +28,11 @@ sudo npm install -g pm2
 echo "📦 Installing Nginx..."
 sudo apt install -y nginx
 
-# ─── 5. Install Git ───
-echo "📦 Installing Git..."
+# ─── 5. Install Git & yt-dlp ───
+echo "📦 Installing Git & yt-dlp..."
 sudo apt install -y git
+sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+sudo chmod a+rx /usr/local/bin/yt-dlp
 
 # ─── 6. Clone the repo ───
 echo "📥 Cloning InstaGrab repository..."
