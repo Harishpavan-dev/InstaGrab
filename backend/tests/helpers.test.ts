@@ -2,31 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { detectPlatform, sanitizeFilename, formatBytes, formatDuration } from '../src/utils/helpers';
 
 describe('detectPlatform', () => {
-  it('detects YouTube watch URLs', () => {
-    expect(detectPlatform('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('youtube');
-    expect(detectPlatform('https://youtube.com/watch?v=dQw4w9WgXcQ')).toBe('youtube');
-  });
-
-  it('detects YouTube short URLs', () => {
-    expect(detectPlatform('https://youtu.be/dQw4w9WgXcQ')).toBe('youtube');
-  });
-
-  it('detects YouTube Shorts', () => {
-    expect(detectPlatform('https://www.youtube.com/shorts/abc123')).toBe('youtube');
-  });
-
   it('detects Instagram post URLs', () => {
     expect(detectPlatform('https://www.instagram.com/p/ABC123/')).toBe('instagram');
     expect(detectPlatform('https://instagram.com/reel/ABC123/')).toBe('instagram');
   });
 
-  it('detects TikTok URLs', () => {
-    expect(detectPlatform('https://www.tiktok.com/@user/video/1234567890')).toBe('tiktok');
-    expect(detectPlatform('https://vm.tiktok.com/ZMd123/')).toBe('tiktok');
+  it('detects Instagram story URLs', () => {
+    expect(detectPlatform('https://www.instagram.com/stories/user/1234567890')).toBe('instagram');
   });
 
   it('returns null for unsupported URLs', () => {
     expect(detectPlatform('https://www.google.com')).toBeNull();
+    expect(detectPlatform('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBeNull();
+    expect(detectPlatform('https://www.tiktok.com/@user/video/1234567890')).toBeNull();
     expect(detectPlatform('https://twitter.com/status/123')).toBeNull();
     expect(detectPlatform('not-a-url')).toBeNull();
   });
