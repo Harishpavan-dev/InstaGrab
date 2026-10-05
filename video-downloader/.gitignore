@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Build
+frontend/.next/
+frontend/out/
+backend/dist/
+
+# Temp files
+backend/temp/
+backend/logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+docker-data/
+
+# PM2
+ecosystem.config.js.bak
+
+# Coverage
+coverage/
