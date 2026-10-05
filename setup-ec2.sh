@@ -166,7 +166,7 @@ DOWNLOAD_RATE_LIMIT_MAX=10
 
 INFO_RATE_LIMIT_MAX=30
 
-ALLOWED_ORIGINS=http://15.206.179.123
+ALLOWED_ORIGINS=http://13.202.85.161
 
 LOG_LEVEL=info
 
@@ -362,11 +362,11 @@ echo "================================================"
 echo ""
 
 echo "🌐 Website:"
-echo "   http://15.206.179.123/"
+echo "   http://13.202.85.161/"
 echo ""
 
 echo "🔌 Backend:"
-echo "   http://15.206.179.123/api/"
+echo "   http://13.202.85.161/api/"
 echo ""
 
 echo "📊 PM2 Status:"
