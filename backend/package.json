@@ -1,7 +1,7 @@
 {
-  "name": "video-downloader-backend",
+  "name": "instagrab-backend",
   "version": "1.0.0",
-  "description": "Video downloader backend API",
+  "description": "InstaGrab backend API",
   "main": "dist/app.js",
   "scripts": {
     "dev": "tsx watch src/app.ts",

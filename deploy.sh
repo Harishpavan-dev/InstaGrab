@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Starting deployment for Video Downloader..."
+echo "🚀 Starting deployment for InstaGrab..."
 
 # Exit on error
 set -e
@@ -24,8 +24,8 @@ pm2 reload ecosystem.config.js --update-env || pm2 start ecosystem.config.js
 
 # Restart Nginx
 echo "🌐 Restarting Nginx..."
-sudo cp nginx.conf /etc/nginx/sites-available/video-downloader
-sudo ln -sf /etc/nginx/sites-available/video-downloader /etc/nginx/sites-enabled/
+sudo cp nginx.conf /etc/nginx/sites-available/instagrab
+sudo ln -sf /etc/nginx/sites-available/instagrab /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
 

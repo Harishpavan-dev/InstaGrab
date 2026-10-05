@@ -15,7 +15,7 @@ export const logger = createLogger({
     format.errors({ stack: true }),
     format.json()
   ),
-  defaultMeta: { service: 'video-downloader' },
+  defaultMeta: { service: 'instagrab' },
   transports: [
     new transports.File({
       filename: path.join(logDir, 'error.log'),

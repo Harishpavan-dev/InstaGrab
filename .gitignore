@@ -24,8 +24,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Docker
-docker-data/
+
 
 # PM2
 ecosystem.config.js.bak

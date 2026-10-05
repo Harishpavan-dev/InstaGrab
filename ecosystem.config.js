@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'video-downloader-backend',
+      name: 'instagrab-backend',
       script: 'npm',
       args: 'run start',
       cwd: './backend',
@@ -15,7 +15,7 @@ module.exports = {
       },
     },
     {
-      name: 'video-downloader-frontend',
+      name: 'instagrab-frontend',
       script: 'npm',
       args: 'start',
       cwd: './frontend',
