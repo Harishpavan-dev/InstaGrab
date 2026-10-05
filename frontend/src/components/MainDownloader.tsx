@@ -41,6 +41,8 @@ export function MainDownloader() {
         setJob(res.data.data);
         if (res.data.data.status === "downloading" || res.data.data.status === "pending" || res.data.data.status === "processing" || res.data.data.status === "queued") {
           setTimeout(() => pollStatus(jobId), 1500);
+        } else if (res.data.data.status === "completed") {
+          window.location.href = `${API_URL}/download/file/${jobId}`;
         }
       }
     } catch (err) {
@@ -300,24 +302,19 @@ export function MainDownloader() {
                 <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-600 mb-4">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Ready to Save!</h3>
-                <p className="text-gray-500 text-sm mb-6">
-                  {job.fileName ? job.fileName : "Your file is ready."}
-                  {job.fileSize ? ` (${(job.fileSize / 1024 / 1024).toFixed(2)} MB)` : ""}
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Download Started!</h3>
+                <p className="text-gray-500 text-sm mb-4">
+                  Your file is downloading automatically.
+                  <br/>
+                  <span className="text-xs text-gray-400">
+                    {job.fileName && job.fileSize ? `${job.fileName} (${(job.fileSize / 1024 / 1024).toFixed(2)} MB)` : ""}
+                  </span>
                 </p>
                 <button
-                  onClick={handleSaveFile}
-                  id="save-file-button"
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                >
-                  <Download className="w-5 h-5" />
-                  Save to Device
-                </button>
-                <button
                   onClick={handleReset}
-                  className="mt-3 px-6 py-2 text-gray-500 hover:text-gray-700 text-sm transition-colors cursor-pointer"
+                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-6 py-3 rounded-xl font-bold transition-all shadow-sm hover:shadow flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 >
-                  Download Another
+                  Download Another Link
                 </button>
               </>
             ) : (
