@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════
-# InstaGrab - EC2 Ubuntu Production Setup
+# InstaGrab - EC2 Ubuntu Production
 # Server IP: 13.202.85.161
 # Run this ONCE on your Ubuntu EC2 instance
 # ═══════════════════════════════════════════════════════
