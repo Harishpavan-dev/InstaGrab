@@ -2,7 +2,7 @@
 
 # ═══════════════════════════════════════════════════════
 # InstaGrab - EC2 Ubuntu Production Setup
-# Server IP: 15.206.179.123
+# Server IP: 13.202.85.161
 # Run this ONCE on your Ubuntu EC2 instance
 # ═══════════════════════════════════════════════════════
 
@@ -231,7 +231,7 @@ server {
     listen 80;
     listen [::]:80;
 
-    server_name 15.206.179.123;
+    server_name 13.202.85.161;
 
     client_max_body_size 500M;
 
