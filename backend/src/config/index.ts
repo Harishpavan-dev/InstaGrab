@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Try backend/.env first, then fall back to project root .env
+// Try backend/.env first then fall back to project root .env
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
