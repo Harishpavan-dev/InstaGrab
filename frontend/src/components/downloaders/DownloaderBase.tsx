@@ -9,7 +9,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
 type JobStatus = "pending" | "downloading" | "completed" | "failed";
 
-interface VideoInfo {
+interface MediaInfo {
   platform: "instagram";
   title: string;
   thumbnail?: string;
@@ -26,27 +26,45 @@ interface JobData {
   fileSize?: number;
 }
 
-interface MainDownloaderProps {
-  toolType?: "video" | "reels" | "audio" | "photo" | "stories" | "profile";
+export interface DownloaderConfig {
+  /** Backend endpoint segment: video, reels, audio, photo, stories, profile */
+  endpoint: string;
+  /** Input placeholder text */
+  placeholder: string;
+  /** Button label */
+  buttonLabel: string;
+  /** Download button label shown after info fetch */
+  downloadLabel: string;
+  /** Error fallback when info fetch fails */
+  infoErrorMessage: string;
+  /** Error fallback when download fails */
+  downloadErrorMessage: string;
+  /** Processing status text */
+  processingText: string;
+  /** Badge labels shown below input */
+  badges: string[];
+  /** URL patterns for auto-detect */
+  urlPatterns: string[];
+  /** Format URL before sending to API (e.g. converting just a username to a full stories URL) */
+  formatUrlForApi?: (url: string) => string;
 }
 
-export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
+export function DownloaderBase({ config }: { config: DownloaderConfig }) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
+  const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
   const [job, setJob] = useState<JobData | null>(null);
   const [lastFetchedUrl, setLastFetchedUrl] = useState("");
 
-  // Each tool has its own backend endpoint
-  const apiBase = `${API_URL}/${toolType}`;
+  const apiBase = `${API_URL}/${config.endpoint}`;
 
   const pollStatus = async (jobId: string) => {
     try {
       const res = await axios.get(`${apiBase}/status/${jobId}`);
       if (res.data?.success) {
         setJob(res.data.data);
-        if (res.data.data.status === "downloading" || res.data.data.status === "pending" || res.data.data.status === "processing" || res.data.data.status === "queued") {
+        if (["downloading", "pending", "processing", "queued"].includes(res.data.data.status)) {
           setTimeout(() => pollStatus(jobId), 1500);
         } else if (res.data.data.status === "completed") {
           window.location.href = `${apiBase}/file/${jobId}`;
@@ -54,27 +72,39 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
       }
     } catch (err) {
       console.error(err);
-      setError("Failed to fetch download status.");
+      setError("Failed to check download progress. Please refresh and try again.");
     }
   };
 
-  const fetchInfo = async (fetchUrl: string) => {
-    if (!fetchUrl) return;
-    
-    setLastFetchedUrl(fetchUrl);
+  const fetchInfo = async (rawUrl: string) => {
+    if (!rawUrl) return;
+
+    // Strict validation based on config
+    const isUrlMode = rawUrl.includes("http") || rawUrl.includes("instagram.com");
+    if (isUrlMode && config.urlPatterns.length > 0) {
+       const isValid = config.urlPatterns.some(p => rawUrl.includes(p));
+       if (!isValid) {
+         setError(`Invalid URL format for ${config.endpoint}. Please use the correct tab.`);
+         return;
+       }
+    }
+
+    const fetchUrl = config.formatUrlForApi ? config.formatUrlForApi(rawUrl) : rawUrl;
+
+    setLastFetchedUrl(rawUrl);
     setLoading(true);
     setError("");
-    setVideoInfo(null);
+    setMediaInfo(null);
     setJob(null);
 
     try {
       const res = await axios.post(`${apiBase}/info`, { url: fetchUrl });
       if (res.data?.success) {
-        setVideoInfo(res.data.data);
+        setMediaInfo(res.data.data);
       }
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || "Failed to fetch video information. Make sure the post is public.");
-      setLastFetchedUrl(""); // Reset so they can try again
+      setError(err.response?.data?.error?.message || config.infoErrorMessage);
+      setLastFetchedUrl("");
     } finally {
       setLoading(false);
     }
@@ -85,7 +115,7 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
       const text = await navigator.clipboard.readText();
       if (text) {
         setUrl(text);
-        if (text.includes("instagram.com")) {
+        if (text.includes("instagram.com") || text.includes("instagr.am")) {
           fetchInfo(text);
         }
       }
@@ -105,19 +135,18 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
     const newUrl = e.target.value;
     setUrl(newUrl);
 
-    // Auto analyze if it looks like a valid link
-    if (newUrl.includes("instagram.com/p/") || newUrl.includes("instagram.com/reel/") || newUrl.includes("instagram.com/tv/") || newUrl.includes("instagram.com/stories/")) {
-       if (newUrl !== lastFetchedUrl && !loading) {
-         fetchInfo(newUrl);
-       }
+    const matchesPattern = config.urlPatterns.some((p) => newUrl.includes(p));
+    if (matchesPattern) {
+      if (newUrl !== lastFetchedUrl && !loading) {
+        fetchInfo(newUrl);
+      }
     } else {
-       // Clear output if user types something invalid after a fetch
-       if (videoInfo || job || error) {
-         setVideoInfo(null);
-         setJob(null);
-         setError("");
-         setLastFetchedUrl("");
-       }
+      if (mediaInfo || job || error) {
+        setMediaInfo(null);
+        setJob(null);
+        setError("");
+        setLastFetchedUrl("");
+      }
     }
   };
 
@@ -126,28 +155,23 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
     setError("");
 
     try {
-      const payload = { url, quality: "highest" };
+      const formattedUrl = config.formatUrlForApi ? config.formatUrlForApi(url) : url;
+      const payload = { url: formattedUrl, quality: "highest" };
       const res = await axios.post(`${apiBase}`, payload);
       if (res.data?.success) {
         setJob({ id: res.data.data.id, status: res.data.data.status, progress: 0 });
         pollStatus(res.data.data.id);
       }
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || "Failed to start download.");
+      setError(err.response?.data?.error?.message || config.downloadErrorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSaveFile = () => {
-    if (job?.id && job.status === "completed") {
-      window.location.href = `${apiBase}/file/${job.id}`;
-    }
-  };
-
   const handleReset = () => {
     setUrl("");
-    setVideoInfo(null);
+    setMediaInfo(null);
     setJob(null);
     setError("");
     setLoading(false);
@@ -162,10 +186,10 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
           <Link2 className="w-5 h-5 text-gray-400 shrink-0" />
           <input
             type="url"
-            id="instagram-url-input"
+            id={`${config.endpoint}-url-input`}
             value={url}
             onChange={handleInputChange}
-            placeholder="Paste Instagram link here..."
+            placeholder={config.placeholder}
             className="w-full bg-transparent border-none outline-none text-gray-900 placeholder:text-gray-400 py-3 text-base"
             required
             disabled={loading}
@@ -186,30 +210,25 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
           <button
             type="submit"
             disabled={loading || !url}
-            id="fetch-download-button"
+            id={`${config.endpoint}-download-button`}
             className="bg-purple-600 hover:bg-purple-700 text-white px-7 py-2.5 rounded-full font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm shrink-0 cursor-pointer active:scale-95 min-w-[120px]"
           >
-            {loading && !job && !videoInfo ? (
+            {loading && !job && !mediaInfo ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              "Download"
+              config.buttonLabel
             )}
           </button>
         </div>
       </form>
 
       {/* Feature Badges */}
-      {!videoInfo && !job && !error && (
+      {!mediaInfo && !job && !error && (
         <div className="flex flex-wrap justify-center gap-4 md:gap-8 mt-1">
-          {[
-            { label: "100% Free", color: "text-emerald-600" },
-            { label: "No Login Required", color: "text-emerald-600" },
-            { label: "HD Quality", color: "text-emerald-600" },
-            { label: "No Watermarks", color: "text-emerald-600" },
-          ].map((badge) => (
-            <div key={badge.label} className="flex items-center gap-1.5 text-sm text-gray-600">
-              <CheckCircle2 className={`w-4 h-4 ${badge.color}`} />
-              <span className="font-medium">{badge.label}</span>
+          {config.badges.map((badge) => (
+            <div key={badge} className="flex items-center gap-1.5 text-sm text-gray-600">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span className="font-medium">{badge}</span>
             </div>
           ))}
         </div>
@@ -229,18 +248,20 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
           </motion.div>
         )}
 
-        {/* Video Info Card */}
-        {videoInfo && !job && (
+        {/* Media Info Card */}
+        {mediaInfo && !job && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="w-full max-w-2xl bg-white border border-gray-200 rounded-2xl p-5 shadow-lg overflow-hidden"
           >
             <div className="flex flex-col md:flex-row gap-5">
-              {videoInfo.thumbnail ? (
+              {mediaInfo.thumbnail ? (
                 <div className="relative w-full md:w-44 aspect-video md:aspect-square rounded-xl overflow-hidden shrink-0">
-                  <img src={videoInfo.thumbnail} alt={videoInfo.title} className="w-full h-full object-cover" />
-                
+                  <img src={mediaInfo.thumbnail} alt={mediaInfo.title} className="w-full h-full object-cover" />
+                  <div className="absolute bottom-2 right-2 bg-gradient-to-r from-purple-600 to-pink-500 px-2.5 py-1 rounded-md text-xs font-bold text-white">
+                    Instagram
+                  </div>
                 </div>
               ) : (
                 <div className="w-full md:w-44 aspect-square rounded-xl bg-gradient-to-r from-purple-100 to-pink-100 flex items-center justify-center shrink-0">
@@ -253,9 +274,9 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
 
               <div className="flex-1 flex flex-col justify-between">
                 <div>
-                  <h3 className="font-bold text-lg text-gray-900 line-clamp-2 mb-1">{videoInfo.title}</h3>
-                  {videoInfo.author && (
-                    <p className="text-gray-500 text-sm">@{videoInfo.author}</p>
+                  <h3 className="font-bold text-lg text-gray-900 line-clamp-2 mb-1">{mediaInfo.title}</h3>
+                  {mediaInfo.author && (
+                    <p className="text-gray-500 text-sm">@{mediaInfo.author}</p>
                   )}
                 </div>
 
@@ -263,11 +284,11 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
                   <button
                     onClick={handleStartDownload}
                     disabled={loading}
-                    id="download-button"
+                    id={`${config.endpoint}-start-download`}
                     className="w-full md:w-auto bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-75 cursor-pointer active:scale-95"
                   >
                     {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                    Download HD
+                    {config.downloadLabel}
                   </button>
                   <button
                     onClick={handleReset}
@@ -294,7 +315,7 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
                   <AlertCircle className="w-8 h-8" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">Download Failed</h3>
-                <p className="text-gray-500 text-sm mb-6">{job.error || "Something went wrong."}</p>
+                <p className="text-gray-500 text-sm mb-6">{job.error || config.downloadErrorMessage}</p>
                 <button
                   onClick={handleReset}
                   className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-700 font-medium transition-colors cursor-pointer"
@@ -310,7 +331,7 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
                 <h3 className="text-xl font-bold text-gray-900 mb-2">Download Started!</h3>
                 <p className="text-gray-500 text-sm mb-4">
                   Your file is downloading automatically.
-                  <br/>
+                  <br />
                   <span className="text-xs text-gray-400">
                     {job.fileName && job.fileSize ? `${job.fileName} (${(job.fileSize / 1024 / 1024).toFixed(2)} MB)` : ""}
                   </span>
@@ -342,9 +363,7 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
                     {job.progress > 0 ? `${Math.round(job.progress)}%` : <Loader2 className="w-5 h-5 animate-spin text-purple-500" />}
                   </div>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">
-                  {job.status === "pending" || job.status === "downloading" ? "Processing..." : "Downloading..."}
-                </h3>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">{config.processingText}</h3>
                 <p className="text-gray-400 text-sm">Please wait while we fetch your content.</p>
               </>
             )}

@@ -1,10 +1,24 @@
 import { Router } from 'express';
-import downloadRoutes from './downloadRoutes';
+import videoRoutes from './videoRoutes';
+import audioRoutes from './audioRoutes';
+import photoRoutes from './photoRoutes';
+import reelsRoutes from './reelsRoutes';
+import storiesRoutes from './storiesRoutes';
+import profileRoutes from './profileRoutes';
 import { downloadController } from '../controllers/downloadController';
 
 const router = Router();
 
-router.use('/download', downloadRoutes);
+router.use('/video', videoRoutes);
+router.use('/audio', audioRoutes);
+router.use('/photo', photoRoutes);
+router.use('/reels', reelsRoutes);
+router.use('/stories', storiesRoutes);
+router.use('/profile', profileRoutes);
+
+// Fallback old endpoints
+router.use('/download', videoRoutes);
+
 router.get('/health', (req, res) => downloadController.healthCheck(req, res));
 
 export default router;

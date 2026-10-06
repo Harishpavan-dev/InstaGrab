@@ -1,8 +1,10 @@
 import { Platform } from '../types';
 
 const instagramPatterns: RegExp[] = [
-  /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|tv)\/[\w-]+/i,
-  /^https?:\/\/(www\.)?instagram\.com\/stories\/[\w.-]+\/\d+/i,
+  /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|tv|audio|reels\/audio)\/[\w-]+/i,
+  /^https?:\/\/(www\.)?instagram\.com\/stories\/[\w.-]+\/?\d*/i,
+  /^https?:\/\/(www\.)?instagram\.com\/[\w.-]+\/?$/i,
+  /^https?:\/\/(www\.)?instagr\.am\/.+/i,
 ];
 
 export function detectPlatform(url: string): Platform | null {

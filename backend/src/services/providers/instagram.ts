@@ -175,19 +175,24 @@ export class InstagramProvider implements DownloadProvider {
       const args: string[] = [
         '-o', outputTemplate,
         '--no-playlist',
-        '--merge-output-format', format || 'mp4',
       ];
 
-      // Select quality
-      if (quality && quality !== 'best' && quality !== 'default') {
-        const height = parseInt(quality);
-        if (height > 0) {
-          args.push('-f', `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`);
+      if (format === 'mp3' || format === 'audio') {
+        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+      } else if (format === 'jpg' || format === 'png' || format === 'image') {
+        args.push('-f', 'best');
+      } else {
+        args.push('--merge-output-format', format || 'mp4');
+        if (quality && quality !== 'best' && quality !== 'default') {
+          const height = parseInt(quality);
+          if (height > 0) {
+            args.push('-f', `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`);
+          } else {
+            args.push('-f', 'best');
+          }
         } else {
           args.push('-f', 'best');
         }
-      } else {
-        args.push('-f', 'best');
       }
 
       args.push(url);
