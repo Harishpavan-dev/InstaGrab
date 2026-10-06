@@ -17,7 +17,7 @@ export function StoriesDownloader() {
         formatUrlForApi: (input: string) => {
           let str = input.trim();
           if (!str.includes("instagram.com")) {
-            str = str.replace(/^@/, ''); // remove starting @ if exists
+            str = str.replace(/^@/, ''); // remove starting @ ifexists
             return `https://www.instagram.com/stories/${str}/`;
           }
           if (str.includes("instagram.com") && !str.includes("/stories/")) {
