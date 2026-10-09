@@ -13,6 +13,9 @@ import {
 import routes from './routes';
 import { startCleanupWorker } from './workers/cleanupWorker';
 import { downloadService } from './services/downloadService';
+import { initDb } from './db/mysql';
+
+import { ipAndMaintenanceGuard } from './middleware/ipAndMaintenanceGuard';
 
 const app = express();
 
@@ -31,6 +34,9 @@ app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(requestId);
 app.use(requestLogger);
 
+// Check IP ban and Maintenance mode
+app.use(ipAndMaintenanceGuard);
+
 // General rate limit
 app.use(generalLimiter);
 
@@ -42,12 +48,15 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Start server
-const server = app.listen(config.port, () => {
+const server = app.listen(config.port, async () => {
   logger.info(`Server started on port ${config.port}`, {
     env: config.env,
     tempDir: config.files.tempDir,
     fileExpiration: `${config.files.expirationMinutes} minutes`,
   });
+
+  // Initialize DB connection
+  await initDb();
 
   // Start cleanup worker
   startCleanupWorker();

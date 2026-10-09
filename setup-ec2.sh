@@ -36,7 +36,18 @@ sudo apt install -y \
     unzip \
     ffmpeg \
     ca-certificates \
-    build-essential
+    build-essential \
+    mysql-server
+
+sudo systemctl enable mysql
+sudo systemctl start mysql
+
+# Setup MySQL database & user
+echo "🐬 Setting up MySQL Database..."
+sudo mysql -e "CREATE DATABASE IF NOT EXISTS instagrab_db;"
+sudo mysql -e "CREATE USER IF NOT EXISTS 'instagrab'@'localhost' IDENTIFIED BY 'instagrab_secure_pass_123';"
+sudo mysql -e "GRANT ALL PRIVILEGES ON instagrab_db.* TO 'instagrab'@'localhost';"
+sudo mysql -e "FLUSH PRIVILEGES;"
 
 
 # ─────────────────────────────────────────────────────
@@ -169,6 +180,16 @@ INFO_RATE_LIMIT_MAX=30
 ALLOWED_ORIGINS=http://13.202.85.161,http://localhost:3000,*
 
 LOG_LEVEL=info
+
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=instagrab
+DB_PASSWORD=instagrab_secure_pass_123
+DB_NAME=instagrab_db
+
+ADMIN_JWT_SECRET=instagrab_admin_secret_key_2026_super_secure
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin12345
 
 EOF
 
