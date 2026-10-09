@@ -229,7 +229,7 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
           </motion.div>
         )}
 
-        {/* Video Info Card */}
+        {/* Video Card */}
         {videoInfo && !job && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
