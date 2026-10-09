@@ -79,12 +79,13 @@ export const corsMiddleware = cors({
   maxAge: 86400,
 });
 
-// General rate limiter
+// General rate limiter (skip admin routes)
 export const generalLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.maxRequests,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path.includes('/admin') || req.originalUrl.includes('/admin'),
   message: {
     success: false,
     error: {
