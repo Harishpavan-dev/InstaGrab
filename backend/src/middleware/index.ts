@@ -59,13 +59,21 @@ export const corsMiddleware = cors({
       return callback(null, true);
     }
 
-    if (config.cors.allowedOrigins.includes(origin)) {
+    const cleanOrigin = origin.replace(/\/$/, '');
+    const allowed = config.cors.allowedOrigins.some((allowedOrigin) => {
+      if (allowedOrigin === '*') return true;
+      const cleanAllowed = allowedOrigin.replace(/\/$/, '');
+      return cleanOrigin === cleanAllowed;
+    });
+
+    if (allowed) {
       return callback(null, true);
     }
 
+    logger.warn(`CORS blocked request from origin: ${origin}`);
     callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   exposedHeaders: ['Content-Disposition'],
   maxAge: 86400,

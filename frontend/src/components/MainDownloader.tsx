@@ -5,7 +5,7 @@ import { Download, Loader2, AlertCircle, CheckCircle2, Clipboard, Link2 } from "
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 type JobStatus = "pending" | "downloading" | "completed" | "failed";
 
