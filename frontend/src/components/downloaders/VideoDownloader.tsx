@@ -12,8 +12,9 @@ export function VideoDownloader() {
         infoErrorMessage: "Failed to fetch video information. Make sure this is a public Instagram video post.",
         downloadErrorMessage: "Video download failed. The post may be private or the link is invalid.",
         processingText: "Processing video...",
-        badges: ["100% Free", "No Login Required", "HD Quality", "No Watermarks"],
+        badges: ["100% Free", "No Login Required", "HD Quality", "Audio Extract"],
         urlPatterns: ["instagram.com/p/", "instagram.com/tv/"],
+        showAudioExtract: true,
       }}
     />
   );

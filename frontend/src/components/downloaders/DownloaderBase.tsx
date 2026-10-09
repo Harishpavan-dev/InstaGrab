@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { Download, Loader2, AlertCircle, CheckCircle2, Clipboard, Link2 } from "lucide-react";
+import { Download, Loader2, AlertCircle, CheckCircle2, Clipboard, Link2, Music } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 
@@ -47,27 +47,33 @@ export interface DownloaderConfig {
   urlPatterns: string[];
   /** Format URL before sending to API (e.g. converting just a username to a full stories URL) */
   formatUrlForApi?: (url: string) => string;
+  /** Show "Extract Audio" button alongside the main download */
+  showAudioExtract?: boolean;
 }
 
 export function DownloaderBase({ config }: { config: DownloaderConfig }) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
   const [error, setError] = useState("");
   const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
   const [job, setJob] = useState<JobData | null>(null);
   const [lastFetchedUrl, setLastFetchedUrl] = useState("");
+  const [downloadMode, setDownloadMode] = useState<"video" | "audio">("video");
 
   const apiBase = `${API_URL}/${config.endpoint}`;
+  const audioApiBase = `${API_URL}/audio`;
 
-  const pollStatus = async (jobId: string) => {
+  const pollStatus = async (jobId: string, mode: "video" | "audio" = "video") => {
+    const base = mode === "audio" ? audioApiBase : apiBase;
     try {
-      const res = await axios.get(`${apiBase}/status/${jobId}`);
+      const res = await axios.get(`${base}/status/${jobId}`);
       if (res.data?.success) {
         setJob(res.data.data);
         if (["downloading", "pending", "processing", "queued"].includes(res.data.data.status)) {
-          setTimeout(() => pollStatus(jobId), 1500);
+          setTimeout(() => pollStatus(jobId, mode), 1500);
         } else if (res.data.data.status === "completed") {
-          window.location.href = `${apiBase}/file/${jobId}`;
+          window.location.href = `${base}/file/${jobId}`;
         }
       }
     } catch (err) {
@@ -153,6 +159,7 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
   const handleStartDownload = async () => {
     setLoading(true);
     setError("");
+    setDownloadMode("video");
 
     try {
       const formattedUrl = config.formatUrlForApi ? config.formatUrlForApi(url) : url;
@@ -160,12 +167,32 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
       const res = await axios.post(`${apiBase}`, payload);
       if (res.data?.success) {
         setJob({ id: res.data.data.id, status: res.data.data.status, progress: 0 });
-        pollStatus(res.data.data.id);
+        pollStatus(res.data.data.id, "video");
       }
     } catch (err: any) {
       setError(err.response?.data?.error?.message || config.downloadErrorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExtractAudio = async () => {
+    setAudioLoading(true);
+    setError("");
+    setDownloadMode("audio");
+
+    try {
+      const formattedUrl = config.formatUrlForApi ? config.formatUrlForApi(url) : url;
+      const payload = { url: formattedUrl, quality: "highest" };
+      const res = await axios.post(`${audioApiBase}`, payload);
+      if (res.data?.success) {
+        setJob({ id: res.data.data.id, status: res.data.data.status, progress: 0 });
+        pollStatus(res.data.data.id, "audio");
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error?.message || "Audio extraction failed. Please try again.");
+    } finally {
+      setAudioLoading(false);
     }
   };
 
@@ -175,7 +202,9 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
     setJob(null);
     setError("");
     setLoading(false);
+    setAudioLoading(false);
     setLastFetchedUrl("");
+    setDownloadMode("video");
   };
 
   return (
@@ -192,7 +221,7 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
             placeholder={config.placeholder}
             className="w-full bg-transparent border-none outline-none text-gray-900 placeholder:text-gray-400 py-3 text-base"
             required
-            disabled={loading}
+            disabled={loading || audioLoading}
           />
 
           {!url && (
@@ -209,7 +238,7 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
 
           <button
             type="submit"
-            disabled={loading || !url}
+            disabled={loading || audioLoading || !url}
             id={`${config.endpoint}-download-button`}
             className="bg-purple-600 hover:bg-purple-700 text-white px-7 py-2.5 rounded-full font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm shrink-0 cursor-pointer active:scale-95 min-w-[120px]"
           >
@@ -283,13 +312,26 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
                 <div className="flex flex-wrap gap-3 mt-4">
                   <button
                     onClick={handleStartDownload}
-                    disabled={loading}
+                    disabled={loading || audioLoading}
                     id={`${config.endpoint}-start-download`}
-                    className="w-full md:w-auto bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-75 cursor-pointer active:scale-95"
+                    className="flex-1 md:flex-none bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-75 cursor-pointer active:scale-95"
                   >
                     {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                     {config.downloadLabel}
                   </button>
+
+                  {config.showAudioExtract && (
+                    <button
+                      onClick={handleExtractAudio}
+                      disabled={loading || audioLoading}
+                      id={`${config.endpoint}-extract-audio`}
+                      className="flex-1 md:flex-none bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-75 cursor-pointer active:scale-95"
+                    >
+                      {audioLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Music className="w-5 h-5" />}
+                      Extract Audio (MP3)
+                    </button>
+                  )}
+
                   <button
                     onClick={handleReset}
                     className="px-6 py-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all text-sm font-medium cursor-pointer"
@@ -328,9 +370,11 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
                 <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-600 mb-4">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Download Started!</h3>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  {downloadMode === "audio" ? "Audio Download Started!" : "Download Started!"}
+                </h3>
                 <p className="text-gray-500 text-sm mb-4">
-                  Your file is downloading automatically.
+                  Your {downloadMode === "audio" ? "MP3 audio" : "file"} is downloading automatically.
                   <br />
                   <span className="text-xs text-gray-400">
                     {job.fileName && job.fileSize ? `${job.fileName} (${(job.fileSize / 1024 / 1024).toFixed(2)} MB)` : ""}
@@ -352,7 +396,7 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
                       cx="40"
                       cy="40"
                       r="36"
-                      className="fill-none stroke-purple-500 transition-all duration-500"
+                      className={`fill-none transition-all duration-500 ${downloadMode === "audio" ? "stroke-pink-500" : "stroke-purple-500"}`}
                       strokeWidth="4"
                       strokeDasharray="226"
                       strokeDashoffset={226 - (226 * (job.progress || 5)) / 100}
@@ -360,11 +404,17 @@ export function DownloaderBase({ config }: { config: DownloaderConfig }) {
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center text-gray-800 font-bold text-sm">
-                    {job.progress > 0 ? `${Math.round(job.progress)}%` : <Loader2 className="w-5 h-5 animate-spin text-purple-500" />}
+                    {job.progress > 0 ? `${Math.round(job.progress)}%` : <Loader2 className={`w-5 h-5 animate-spin ${downloadMode === "audio" ? "text-pink-500" : "text-purple-500"}`} />}
                   </div>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">{config.processingText}</h3>
-                <p className="text-gray-400 text-sm">Please wait while we fetch your content.</p>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">
+                  {downloadMode === "audio" ? "Extracting Audio..." : config.processingText}
+                </h3>
+                <p className="text-gray-400 text-sm">
+                  {downloadMode === "audio"
+                    ? "Converting video to MP3 audio format."
+                    : "Please wait while we fetch your content."}
+                </p>
               </>
             )}
           </motion.div>

@@ -89,8 +89,23 @@ export class DownloadService {
         return;
       }
 
-      // Download
-      const filePath = await this.provider.download(job.url, jobDir, job.quality, job.format);
+      // Download with smooth progress updates
+      let progressTimer: NodeJS.Timeout | null = setInterval(() => {
+        if (job.progress < 90) {
+          job.progress = Math.min(90, job.progress + 10);
+          job.updatedAt = Date.now();
+        }
+      }, 1000);
+
+      let filePath: string;
+      try {
+        filePath = await this.provider.download(job.url, jobDir, job.quality, job.format);
+      } finally {
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+        }
+      }
 
       if (!fs.existsSync(filePath)) {
         throw new Error('Downloaded file not found.');

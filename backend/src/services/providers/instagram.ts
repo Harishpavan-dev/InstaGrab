@@ -175,29 +175,57 @@ export class InstagramProvider implements DownloadProvider {
       const args: string[] = [
         '-o', outputTemplate,
         '--no-playlist',
+        '--no-part',
       ];
 
       if (format === 'mp3' || format === 'audio') {
-        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+        // Attempt MP3 extraction first with best audio format selector
+        args.push('-f', 'ba/b/best', '-x', '--audio-format', 'mp3', '--audio-quality', '0');
       } else if (format === 'jpg' || format === 'png' || format === 'image') {
-        args.push('-f', 'best');
+        args.push('-f', 'b/best');
       } else {
         args.push('--merge-output-format', format || 'mp4');
         if (quality && quality !== 'best' && quality !== 'default') {
           const height = parseInt(quality);
           if (height > 0) {
-            args.push('-f', `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`);
+            args.push('-f', `b[height<=${height}]/bv*[height<=${height}]+ba/best[height<=${height}]/b/best`);
           } else {
-            args.push('-f', 'best');
+            args.push('-f', 'b/bv*+ba/bestvideo+bestaudio/best');
           }
         } else {
-          args.push('-f', 'best');
+          args.push('-f', 'b/bv*+ba/bestvideo+bestaudio/best');
         }
       }
 
       args.push(url);
 
-      await this.runYtDlp(args, 600000); // 10 minute timeout for actual download
+      try {
+        await this.runYtDlp(args, 600000); // 10 minute timeout for actual download
+      } catch (firstErr: any) {
+        // If MP3 extraction failed (e.g. missing ffmpeg for mp3 conversion), try fallback without -x
+        if (format === 'mp3' || format === 'audio') {
+          logger.warn('MP3 conversion failed, attempting direct audio download fallback', { error: firstErr.message });
+          const fallbackArgs = [
+            '-o', outputTemplate,
+            '--no-playlist',
+            '--no-part',
+            '-f', 'ba/b/best',
+            url,
+          ];
+          await this.runYtDlp(fallbackArgs, 600000);
+        } else {
+          // If strict format failed for video, try simplest fallback format
+          logger.warn('Primary video format failed, attempting fallback best format', { error: firstErr.message });
+          const fallbackVideoArgs = [
+            '-o', outputTemplate,
+            '--no-playlist',
+            '--no-part',
+            '-f', 'best',
+            url,
+          ];
+          await this.runYtDlp(fallbackVideoArgs, 600000);
+        }
+      }
 
       // Find the downloaded file
       const files = fs.readdirSync(outputDir);

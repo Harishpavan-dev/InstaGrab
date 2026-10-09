@@ -12,8 +12,9 @@ export function ReelsDownloader() {
         infoErrorMessage: "Failed to fetch reel info. Make sure this is a valid public Instagram Reel URL.",
         downloadErrorMessage: "Reel download failed. The reel may be private or removed by the creator.",
         processingText: "Processing reel...",
-        badges: ["1080p Quality", "No Login", "Fast Download", "Zero Watermarks"],
+        badges: ["1080p Quality", "No Login", "Fast Download", "Audio Extract"],
         urlPatterns: ["instagram.com/reel/", "instagram.com/reels/"],
+        showAudioExtract: true,
       }}
     />
   );
