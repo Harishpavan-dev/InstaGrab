@@ -26,6 +26,14 @@ import {
   Globe,
   Upload,
   AlertTriangle,
+  Bot,
+  Send,
+  Settings,
+  RotateCcw,
+  Video,
+  Music,
+  Check,
+  Radio,
 } from "lucide-react";
 import axios from "axios";
 
@@ -75,10 +83,51 @@ interface CookieStatus {
   lastModified?: string;
 }
 
+interface TelegramStatusData {
+  running: boolean;
+  uptime: number | null;
+  botUsername: string | null;
+  totalProcessed: number;
+  startedAt: number | null;
+  botEnabled: boolean;
+  botTokenConfigured: boolean;
+}
+
+interface TelegramSettingsData {
+  bot_enabled: boolean;
+  bot_token?: string;
+  welcome_message: string;
+  max_daily_downloads_per_user: number;
+  allowed_formats: string;
+}
+
+interface TelegramLogEntry {
+  id?: number;
+  telegram_user_id: number;
+  telegram_username: string;
+  first_name: string;
+  requested_url: string;
+  format: "video" | "audio";
+  status: "success" | "failed";
+  error_message?: string;
+  file_size_bytes?: number;
+  created_at: string;
+}
+
+interface TelegramAnalyticsData {
+  totalRequests: number;
+  todayRequests: number;
+  uniqueUsers: number;
+  videoDownloads: number;
+  audioDownloads: number;
+  successRate: number;
+  topUsers: { username: string; count: number }[];
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"logs" | "banned" | "cookies" | "metrics" | "analytics" | "systemLogs">("logs");
+  const [activeTab, setActiveTab] = useState<"logs" | "banned" | "cookies" | "metrics" | "analytics" | "systemLogs" | "telegram">("logs");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -98,6 +147,22 @@ export default function AdminDashboardPage() {
   const [systemLogType, setSystemLogType] = useState<"combined" | "error">("combined");
   const [actionMessage, setActionMessage] = useState("");
 
+  // Telegram States
+  const [tgStatus, setTgStatus] = useState<TelegramStatusData | null>(null);
+  const [tgSettings, setTgSettings] = useState<TelegramSettingsData | null>(null);
+  const [tgLogs, setTgLogs] = useState<TelegramLogEntry[]>([]);
+  const [tgLogTotal, setTgLogTotal] = useState(0);
+  const [tgPage, setTgPage] = useState(1);
+  const [tgSearch, setTgSearch] = useState("");
+  const [tgAnalytics, setTgAnalytics] = useState<TelegramAnalyticsData | null>(null);
+  const [tgTokenInput, setTgTokenInput] = useState("");
+  const [tgWelcomeMsgInput, setTgWelcomeMsgInput] = useState("");
+  const [tgMaxDailyInput, setTgMaxDailyInput] = useState<number>(20);
+  const [tgVideoAllowed, setTgVideoAllowed] = useState(true);
+  const [tgAudioAllowed, setTgAudioAllowed] = useState(true);
+  const [savingTgSettings, setSavingTgSettings] = useState(false);
+  const [tgActionLoading, setTgActionLoading] = useState(false);
+
   useEffect(() => {
     const savedToken = localStorage.getItem("instagrab_admin_token");
     if (!savedToken) {
@@ -113,7 +178,7 @@ export default function AdminDashboardPage() {
       const interval = setInterval(fetchAllData, 10000);
       return () => clearInterval(interval);
     }
-  }, [token, page, search, systemLogType]);
+  }, [token, page, search, systemLogType, tgPage, tgSearch]);
 
   const showToast = (msg: string) => {
     setActionMessage(msg);
@@ -127,13 +192,28 @@ export default function AdminDashboardPage() {
     const headers = { Authorization: `Bearer ${token}` };
 
     try {
-      const [metricsRes, logsRes, bannedRes, analyticsRes, cookiesRes, systemLogsRes] = await Promise.allSettled([
+      const [
+        metricsRes,
+        logsRes,
+        bannedRes,
+        analyticsRes,
+        cookiesRes,
+        systemLogsRes,
+        tgStatusRes,
+        tgSettingsRes,
+        tgLogsRes,
+        tgAnalyticsRes,
+      ] = await Promise.allSettled([
         axios.get(`${API_URL}/admin/metrics`, { headers }),
         axios.get(`${API_URL}/admin/logs?page=${page}&limit=30&search=${encodeURIComponent(search)}`, { headers }),
         axios.get(`${API_URL}/admin/banned-ips`, { headers }),
         axios.get(`${API_URL}/admin/analytics`, { headers }),
         axios.get(`${API_URL}/admin/cookies`, { headers }),
         axios.get(`${API_URL}/admin/system-logs?type=${systemLogType}`, { headers }),
+        axios.get(`${API_URL}/admin/telegram/status`, { headers }),
+        axios.get(`${API_URL}/admin/telegram/settings`, { headers }),
+        axios.get(`${API_URL}/admin/telegram/logs?page=${tgPage}&limit=30&search=${encodeURIComponent(tgSearch)}`, { headers }),
+        axios.get(`${API_URL}/admin/telegram/analytics`, { headers }),
       ]);
 
       if (metricsRes.status === "fulfilled" && metricsRes.value.data?.success) {
@@ -154,6 +234,27 @@ export default function AdminDashboardPage() {
       }
       if (systemLogsRes.status === "fulfilled" && systemLogsRes.value.data?.success) {
         setSystemLogs(systemLogsRes.value.data.data.logs || []);
+      }
+      if (tgStatusRes.status === "fulfilled" && tgStatusRes.value.data?.success) {
+        setTgStatus(tgStatusRes.value.data.data);
+      }
+      if (tgSettingsRes.status === "fulfilled" && tgSettingsRes.value.data?.success) {
+        const s = tgSettingsRes.value.data.data?.settings;
+        setTgSettings(s);
+        if (!tgWelcomeMsgInput && s) {
+          setTgWelcomeMsgInput(s.welcome_message || "");
+          setTgMaxDailyInput(s.max_daily_downloads_per_user || 20);
+          setTgVideoAllowed(s.allowed_formats?.includes("video") ?? true);
+          setTgAudioAllowed(s.allowed_formats?.includes("audio") ?? true);
+          if (s.bot_token) setTgTokenInput(s.bot_token);
+        }
+      }
+      if (tgLogsRes.status === "fulfilled" && tgLogsRes.value.data?.success) {
+        setTgLogs(tgLogsRes.value.data.data.logs || []);
+        setTgLogTotal(tgLogsRes.value.data.data.pagination?.total || 0);
+      }
+      if (tgAnalyticsRes.status === "fulfilled" && tgAnalyticsRes.value.data?.success) {
+        setTgAnalytics(tgAnalyticsRes.value.data.data);
       }
     } catch (err: any) {
       if (err.response?.status === 401) {
@@ -244,6 +345,78 @@ export default function AdminDashboardPage() {
     } catch (err) {
       showToast("Failed to update cookies file.");
     }
+  };
+
+  const handleToggleTelegram = async () => {
+    if (!token) return;
+    setTgActionLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const nextState = !tgStatus?.running;
+      const res = await axios.post(`${API_URL}/admin/telegram/toggle`, { enabled: nextState }, { headers });
+      if (res.data?.success) {
+        showToast(res.data.message || `Telegram bot ${nextState ? "started" : "stopped"}`);
+        fetchAllData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.error?.message || "Failed to toggle Telegram bot.");
+    } finally {
+      setTgActionLoading(false);
+    }
+  };
+
+  const handleRestartTelegram = async () => {
+    if (!token) return;
+    setTgActionLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const res = await axios.post(`${API_URL}/admin/telegram/restart`, {}, { headers });
+      if (res.data?.success) {
+        showToast(res.data.message || "Telegram bot restarted successfully");
+        fetchAllData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.error?.message || "Failed to restart Telegram bot.");
+    } finally {
+      setTgActionLoading(false);
+    }
+  };
+
+  const handleSaveTelegramSettings = async () => {
+    if (!token) return;
+    setSavingTgSettings(true);
+    try {
+      const formats: string[] = [];
+      if (tgVideoAllowed) formats.push("video");
+      if (tgAudioAllowed) formats.push("audio");
+
+      const headers = { Authorization: `Bearer ${token}` };
+      const res = await axios.put(
+        `${API_URL}/admin/telegram/settings`,
+        {
+          bot_token: tgTokenInput.trim() || undefined,
+          welcome_message: tgWelcomeMsgInput,
+          max_daily_downloads_per_user: Number(tgMaxDailyInput),
+          allowed_formats: formats.join(","),
+        },
+        { headers }
+      );
+      if (res.data?.success) {
+        showToast("Telegram bot settings updated successfully!");
+        fetchAllData();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.error?.message || "Failed to save Telegram settings.");
+    } finally {
+      setSavingTgSettings(false);
+    }
+  };
+
+  const formatBytes = (bytes?: number) => {
+    if (!bytes || bytes === 0) return "N/A";
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
   };
 
   const formatUptime = (seconds: number) => {
@@ -502,6 +675,23 @@ export default function AdminDashboardPage() {
         >
           <Terminal className="w-4 h-4" />
           Server Logs Console
+        </button>
+
+        <button
+          onClick={() => setActiveTab("telegram")}
+          className={`px-4 py-2.5 rounded-t-xl text-xs font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === "telegram"
+              ? "border-sky-500 text-sky-400 bg-sky-500/10"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Bot className="w-4 h-4 text-sky-400" />
+          <span>Telegram Bot</span>
+          {tgStatus?.running ? (
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Bot Online" />
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-slate-600 ml-0.5" title="Bot Offline" />
+          )}
         </button>
       </div>
 
@@ -901,6 +1091,412 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* TAB 7: Telegram Bot Management */}
+      {activeTab === "telegram" && (
+        <div className="space-y-6">
+          {/* Bot Status & Control Header Banner */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+              <div className="flex items-start sm:items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 shrink-0">
+                  <Bot className="w-8 h-8" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h2 className="text-xl font-bold tracking-tight">Telegram Bot Controller</h2>
+                    {tgStatus?.running ? (
+                      <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-xs font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        Online & Polling
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 bg-slate-800 text-slate-400 border border-slate-700 px-3 py-1 rounded-full text-xs font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-slate-500" />
+                        Stopped
+                      </span>
+                    )}
+
+                    {tgStatus?.botTokenConfigured ? (
+                      <span className="inline-flex items-center gap-1 bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2.5 py-0.5 rounded-full text-[11px] font-medium">
+                        <Check className="w-3 h-3" /> Token Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-0.5 rounded-full text-[11px] font-medium">
+                        <AlertTriangle className="w-3 h-3" /> Token Not Set in .env
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-400">
+                    {tgStatus?.botUsername ? (
+                      <a
+                        href={`https://t.me/${tgStatus.botUsername}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1"
+                      >
+                        @{tgStatus.botUsername}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <span>Username: Not Connected</span>
+                    )}
+                    <span>•</span>
+                    <span>Uptime: {tgStatus?.uptime ? formatUptime(tgStatus.uptime) : "N/A"}</span>
+                    <span>•</span>
+                    <span>Max File Size: 50MB (Telegram Limit)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={handleToggleTelegram}
+                  disabled={tgActionLoading || !tgStatus?.botTokenConfigured}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
+                    tgStatus?.running
+                      ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20"
+                      : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-600/20"
+                  } disabled:opacity-40`}
+                >
+                  {tgStatus?.running ? (
+                    <>
+                      <ToggleRight className="w-4 h-4" /> Stop Bot
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft className="w-4 h-4" /> Start Bot
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleRestartTelegram}
+                  disabled={tgActionLoading || !tgStatus?.running}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                  title="Restart Bot Polling"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${tgActionLoading ? "animate-spin" : ""}`} />
+                  Restart
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Stat Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Bot Downloads</span>
+                <Send className="w-5 h-5 text-sky-400" />
+              </div>
+              <div className="text-3xl font-extrabold text-slate-100">{tgAnalytics?.totalRequests || 0}</div>
+              <p className="text-[11px] text-slate-500 mt-2">
+                Processed via Telegram
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Today's Traffic</span>
+                <Activity className="w-5 h-5 text-indigo-400" />
+              </div>
+              <div className="text-3xl font-extrabold text-indigo-400">{tgAnalytics?.todayRequests || 0}</div>
+              <p className="text-[11px] text-slate-500 mt-2">
+                {tgAnalytics?.uniqueUsers || 0} unique users total
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Success Rate</span>
+                <TrendingUp className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div className="text-3xl font-extrabold text-emerald-400">{tgAnalytics?.successRate || 100}%</div>
+              <div className="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+                <div
+                  className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${tgAnalytics?.successRate || 100}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Format Distribution</span>
+                <Video className="w-5 h-5 text-purple-400" />
+              </div>
+              <div className="flex items-center justify-between text-xs mt-2">
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <Video className="w-3.5 h-3.5 text-purple-400" /> Video: <strong className="text-purple-300 font-bold">{tgAnalytics?.videoDownloads || 0}</strong>
+                </span>
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <Music className="w-3.5 h-3.5 text-amber-400" /> Audio: <strong className="text-amber-300 font-bold">{tgAnalytics?.audioDownloads || 0}</strong>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-3">Breakdown by requested format</p>
+            </div>
+          </div>
+
+          {/* Settings & Leaderboard Split */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Settings Form (2 cols) */}
+            <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <h3 className="text-base font-bold mb-4 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-sky-400" /> Bot Behavior & Limits Configuration
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Telegram Bot API Token
+                  </label>
+                  <p className="text-[11px] text-slate-400 mb-2">
+                    Enter the token provided by @BotFather. You can also configure this in your .env file as `TELEGRAM_BOT_TOKEN`.
+                  </p>
+                  <input
+                    type="password"
+                    value={tgTokenInput}
+                    onChange={(e) => setTgTokenInput(e.target.value)}
+                    placeholder="1234567890:ABCdefGHIjklMNOpqrSTUvwxyz..."
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-sky-500 rounded-xl px-4 py-2.5 font-mono text-xs text-slate-200 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Welcome Message (`/start`)
+                  </label>
+                  <p className="text-[11px] text-slate-400 mb-2">
+                    Message shown to users when they start the bot. Use `&#123;&#123;name&#125;&#125;` to dynamically insert user's first name. Supports Markdown.
+                  </p>
+                  <textarea
+                    rows={4}
+                    value={tgWelcomeMsgInput}
+                    onChange={(e) => setTgWelcomeMsgInput(e.target.value)}
+                    placeholder="👋 Hey {{name}}! Welcome to InstaGrab Bot..."
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-sky-500 rounded-xl p-3.5 text-xs text-slate-200 outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      Daily Download Limit Per User
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={1000}
+                      value={tgMaxDailyInput}
+                      onChange={(e) => setTgMaxDailyInput(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-sky-500 rounded-xl px-4 py-2.5 text-xs text-slate-200 outline-none"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">Set 0 for unlimited daily downloads.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">
+                      Allowed Formats
+                    </label>
+                    <div className="flex items-center gap-4 pt-1">
+                      <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={tgVideoAllowed}
+                          onChange={(e) => setTgVideoAllowed(e.target.checked)}
+                          className="rounded border-slate-700 text-sky-500 focus:ring-0 w-4 h-4 cursor-pointer"
+                        />
+                        <Video className="w-3.5 h-3.5 text-purple-400" />
+                        Video Download
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={tgAudioAllowed}
+                          onChange={(e) => setTgAudioAllowed(e.target.checked)}
+                          className="rounded border-slate-700 text-sky-500 focus:ring-0 w-4 h-4 cursor-pointer"
+                        />
+                        <Music className="w-3.5 h-3.5 text-amber-400" />
+                        Audio Download
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={handleSaveTelegramSettings}
+                    disabled={savingTgSettings}
+                    className="px-6 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 shadow-lg shadow-sky-600/20"
+                  >
+                    <Check className="w-4 h-4" />
+                    {savingTgSettings ? "Saving Settings..." : "Save Bot Settings"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Users Leaderboard (1 col) */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <h3 className="text-base font-bold mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-400" /> Top Bot Users
+              </h3>
+
+              <div className="space-y-2.5">
+                {tgAnalytics?.topUsers && tgAnalytics.topUsers.length > 0 ? (
+                  tgAnalytics.topUsers.map((user, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-5 h-5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-[10px] shrink-0">
+                          #{idx + 1}
+                        </span>
+                        <span className="text-xs text-slate-200 font-medium truncate max-w-[140px]">
+                          {user.username ? `@${user.username}` : `User ${idx + 1}`}
+                        </span>
+                      </div>
+                      <span className="bg-sky-500/10 text-sky-400 border border-sky-500/20 text-[10px] px-2.5 py-0.5 rounded-full font-bold">
+                        {user.count} dl
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-500 py-6 text-center">No user activity recorded yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Telegram Activity Logs Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-base font-bold">Telegram Download Logs</h3>
+                <p className="text-xs text-slate-400">Real-time log of every interaction with your Telegram bot</p>
+              </div>
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  value={tgSearch}
+                  onChange={(e) => setTgSearch(e.target.value)}
+                  placeholder="Search username, link, or ID..."
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-sky-500 rounded-xl py-2 pl-10 pr-4 text-xs text-slate-100 placeholder:text-slate-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider">
+                    <th className="py-3 px-4">Timestamp</th>
+                    <th className="py-3 px-4">Telegram User</th>
+                    <th className="py-3 px-4">Format</th>
+                    <th className="py-3 px-4">Requested URL</th>
+                    <th className="py-3 px-4">Size</th>
+                    <th className="py-3 px-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {tgLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-500">
+                        No Telegram activity logs recorded yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    tgLogs.map((log, index) => (
+                      <tr key={log.id || index} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap">
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <div className="font-semibold text-slate-200">
+                            {log.first_name || "User"}
+                          </div>
+                          <div className="text-[10px] text-sky-400 font-mono">
+                            {log.telegram_username ? `@${log.telegram_username}` : `ID: ${log.telegram_user_id}`}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          {log.format === "video" ? (
+                            <span className="inline-flex items-center gap-1 bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase">
+                              <Video className="w-3 h-3" /> Video
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase">
+                              <Music className="w-3 h-3" /> Audio
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 max-w-xs truncate text-slate-300">
+                          <a
+                            href={log.requested_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:text-sky-400 flex items-center gap-1.5 truncate"
+                            title={log.requested_url}
+                          >
+                            <span className="truncate">{log.requested_url}</span>
+                            <ExternalLink className="w-3 h-3 shrink-0 opacity-60" />
+                          </a>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap font-mono text-[11px]">
+                          {formatBytes(log.file_size_bytes)}
+                        </td>
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          {log.status === "success" ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-emerald-500/20">
+                              <CheckCircle className="w-3 h-3" /> Sent
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-rose-500/20"
+                              title={log.error_message}
+                            >
+                              <XCircle className="w-3 h-3" /> Failed
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-800 text-xs">
+              <span className="text-slate-500">
+                Showing page {tgPage} of {Math.ceil(tgLogTotal / 30) || 1}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={tgPage <= 1}
+                  onClick={() => setTgPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg disabled:opacity-40 cursor-pointer"
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={tgPage * 30 >= tgLogTotal}
+                  onClick={() => setTgPage((p) => p + 1)}
+                  className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg disabled:opacity-40 cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

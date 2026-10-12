@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import geoip from 'geoip-lite';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { TelegramLogEntry, TelegramBotSettings, TelegramAnalytics } from '../telegram/types';
 
 let pool: mysql.Pool | null = null;
 let isDbConnected = false;
@@ -77,6 +78,47 @@ export async function initDb(): Promise<void> {
         reason VARCHAR(255) DEFAULT 'Banned by Admin',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Create telegram_bot_logs table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS telegram_bot_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        telegram_user_id BIGINT NOT NULL,
+        telegram_username VARCHAR(255) DEFAULT '',
+        first_name VARCHAR(255) DEFAULT '',
+        requested_url TEXT NOT NULL,
+        format ENUM('video', 'audio') NOT NULL,
+        status ENUM('success', 'failed') NOT NULL,
+        error_message TEXT,
+        file_size_bytes BIGINT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_tg_created_at (created_at),
+        INDEX idx_tg_user_id (telegram_user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Create telegram_bot_settings table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS telegram_bot_settings (
+        id INT PRIMARY KEY DEFAULT 1,
+        bot_enabled BOOLEAN DEFAULT TRUE,
+        bot_token VARCHAR(255) DEFAULT NULL,
+        welcome_message TEXT,
+        max_daily_downloads_per_user INT DEFAULT 20,
+        allowed_formats VARCHAR(50) DEFAULT 'video,audio',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    try {
+      await pool.query(`ALTER TABLE telegram_bot_settings ADD COLUMN bot_token VARCHAR(255) DEFAULT NULL`);
+    } catch {}
+
+    // Seed default settings if not exists
+    await pool.query(`
+      INSERT IGNORE INTO telegram_bot_settings (id, bot_enabled, welcome_message, max_daily_downloads_per_user, allowed_formats)
+      VALUES (1, TRUE, '👋 Hey {{name}}! Welcome to **InstaGrab Bot**!\n\n📥 Just send me an Instagram reel or post link and I\'ll download it for you.\n\n🎬 You can choose between **Video** or **Audio** format.\n\nTry it now! Paste an Instagram link below 👇', 20, 'video,audio');
     `);
 
     isDbConnected = true;
@@ -300,4 +342,238 @@ export async function getAnalyticsSummary(): Promise<{
     toolBreakdown: toolCounts,
     countryBreakdown,
   };
+}
+
+// ────────────────────── Telegram Bot Functions ──────────────────────
+
+const memoryTelegramLogs: TelegramLogEntry[] = [];
+const MAX_MEMORY_TG_LOGS = 500;
+let memoryTelegramSettings: TelegramBotSettings = {
+  bot_enabled: true,
+  welcome_message: '👋 Hey {{name}}! Welcome to InstaGrab Bot!\n\n📥 Just send me an Instagram reel or post link.',
+  max_daily_downloads_per_user: 20,
+  allowed_formats: 'video,audio',
+};
+
+export async function logTelegramActivity(
+  entry: Omit<TelegramLogEntry, 'id' | 'created_at'>
+): Promise<void> {
+  const newEntry: TelegramLogEntry = { ...entry, created_at: new Date() };
+  memoryTelegramLogs.unshift(newEntry);
+  if (memoryTelegramLogs.length > MAX_MEMORY_TG_LOGS) memoryTelegramLogs.pop();
+
+  if (isDbConnected && pool) {
+    try {
+      await pool.query(
+        `INSERT INTO telegram_bot_logs (telegram_user_id, telegram_username, first_name, requested_url, format, status, error_message, file_size_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          entry.telegram_user_id,
+          entry.telegram_username || '',
+          entry.first_name || '',
+          entry.requested_url,
+          entry.format,
+          entry.status,
+          entry.error_message || null,
+          entry.file_size_bytes || 0,
+        ]
+      );
+    } catch (err: any) {
+      logger.error('Failed to insert Telegram log into MySQL', { error: err.message });
+    }
+  }
+}
+
+export async function getTelegramLogs(
+  limit: number = 50,
+  page: number = 1,
+  search?: string
+): Promise<{ logs: TelegramLogEntry[]; total: number }> {
+  const offset = (page - 1) * limit;
+
+  if (isDbConnected && pool) {
+    try {
+      let whereClause = '';
+      const params: any[] = [];
+
+      if (search) {
+        whereClause =
+          'WHERE telegram_username LIKE ? OR requested_url LIKE ? OR first_name LIKE ?';
+        const s = `%${search}%`;
+        params.push(s, s, s);
+      }
+
+      const [countRows]: any = await pool.query(
+        `SELECT COUNT(*) as total FROM telegram_bot_logs ${whereClause}`,
+        params
+      );
+      const total = countRows[0]?.total || 0;
+
+      const [rows]: any = await pool.query(
+        `SELECT * FROM telegram_bot_logs ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+      );
+
+      return { logs: rows as TelegramLogEntry[], total };
+    } catch (err: any) {
+      logger.error('Failed to fetch Telegram logs from MySQL', { error: err.message });
+    }
+  }
+
+  let filtered = memoryTelegramLogs;
+  if (search) {
+    const s = search.toLowerCase();
+    filtered = memoryTelegramLogs.filter(
+      (l) =>
+        (l.telegram_username || '').toLowerCase().includes(s) ||
+        l.requested_url.toLowerCase().includes(s) ||
+        (l.first_name || '').toLowerCase().includes(s)
+    );
+  }
+  return { logs: filtered.slice(offset, offset + limit), total: filtered.length };
+}
+
+export async function getTelegramAnalytics(): Promise<TelegramAnalytics> {
+  if (isDbConnected && pool) {
+    try {
+      const [totalRows]: any = await pool.query('SELECT COUNT(*) as total FROM telegram_bot_logs');
+      const [todayRows]: any = await pool.query(
+        'SELECT COUNT(*) as today FROM telegram_bot_logs WHERE DATE(created_at) = CURDATE()'
+      );
+      const [userRows]: any = await pool.query(
+        'SELECT COUNT(DISTINCT telegram_user_id) as unique_users FROM telegram_bot_logs'
+      );
+      const [videoRows]: any = await pool.query(
+        "SELECT COUNT(*) as count FROM telegram_bot_logs WHERE format = 'video'"
+      );
+      const [audioRows]: any = await pool.query(
+        "SELECT COUNT(*) as count FROM telegram_bot_logs WHERE format = 'audio'"
+      );
+      const [successRows]: any = await pool.query(
+        "SELECT COUNT(*) as count FROM telegram_bot_logs WHERE status = 'success'"
+      );
+      const [topUsers]: any = await pool.query(
+        `SELECT COALESCE(NULLIF(telegram_username, ''), first_name, CAST(telegram_user_id AS CHAR)) as username, COUNT(*) as count
+         FROM telegram_bot_logs GROUP BY telegram_user_id ORDER BY count DESC LIMIT 10`
+      );
+
+      const total = totalRows[0]?.total || 0;
+      const success = successRows[0]?.count || 0;
+
+      return {
+        totalRequests: total,
+        todayRequests: todayRows[0]?.today || 0,
+        uniqueUsers: userRows[0]?.unique_users || 0,
+        videoDownloads: videoRows[0]?.count || 0,
+        audioDownloads: audioRows[0]?.count || 0,
+        successRate: total > 0 ? Math.round((success / total) * 100 * 10) / 10 : 100,
+        topUsers: topUsers.map((r: any) => ({ username: r.username, count: r.count })),
+      };
+    } catch (err: any) {
+      logger.error('Failed to fetch Telegram analytics', { error: err.message });
+    }
+  }
+
+  // Fallback to in-memory
+  const uniqueIds = new Set(memoryTelegramLogs.map((l) => l.telegram_user_id));
+  const videos = memoryTelegramLogs.filter((l) => l.format === 'video').length;
+  const audios = memoryTelegramLogs.filter((l) => l.format === 'audio').length;
+  const successes = memoryTelegramLogs.filter((l) => l.status === 'success').length;
+  const today = new Date().toISOString().split('T')[0];
+  const todayLogs = memoryTelegramLogs.filter(
+    (l) => l.created_at && l.created_at.toISOString().startsWith(today)
+  );
+
+  return {
+    totalRequests: memoryTelegramLogs.length,
+    todayRequests: todayLogs.length,
+    uniqueUsers: uniqueIds.size,
+    videoDownloads: videos,
+    audioDownloads: audios,
+    successRate:
+      memoryTelegramLogs.length > 0
+        ? Math.round((successes / memoryTelegramLogs.length) * 100 * 10) / 10
+        : 100,
+    topUsers: [],
+  };
+}
+
+export async function getTelegramSettings(): Promise<TelegramBotSettings | null> {
+  if (isDbConnected && pool) {
+    try {
+      const [rows]: any = await pool.query('SELECT * FROM telegram_bot_settings WHERE id = 1');
+      if (rows.length > 0) {
+        return rows[0] as TelegramBotSettings;
+      }
+    } catch (err: any) {
+      logger.error('Failed to fetch Telegram settings', { error: err.message });
+    }
+  }
+  return memoryTelegramSettings;
+}
+
+export async function updateTelegramSettings(
+  settings: Partial<TelegramBotSettings>
+): Promise<void> {
+  // Update in-memory
+  memoryTelegramSettings = { ...memoryTelegramSettings, ...settings };
+
+  if (isDbConnected && pool) {
+    try {
+      const fields: string[] = [];
+      const values: any[] = [];
+
+      if (settings.bot_enabled !== undefined) {
+        fields.push('bot_enabled = ?');
+        values.push(settings.bot_enabled);
+      }
+      if (settings.bot_token !== undefined) {
+        fields.push('bot_token = ?');
+        values.push(settings.bot_token);
+      }
+      if (settings.welcome_message !== undefined) {
+        fields.push('welcome_message = ?');
+        values.push(settings.welcome_message);
+      }
+      if (settings.max_daily_downloads_per_user !== undefined) {
+        fields.push('max_daily_downloads_per_user = ?');
+        values.push(settings.max_daily_downloads_per_user);
+      }
+      if (settings.allowed_formats !== undefined) {
+        fields.push('allowed_formats = ?');
+        values.push(settings.allowed_formats);
+      }
+
+      if (fields.length > 0) {
+        await pool.query(
+          `UPDATE telegram_bot_settings SET ${fields.join(', ')} WHERE id = 1`,
+          values
+        );
+      }
+    } catch (err: any) {
+      logger.error('Failed to update Telegram settings', { error: err.message });
+    }
+  }
+}
+
+export async function getUserDailyDownloadCount(userId: number): Promise<number> {
+  if (isDbConnected && pool) {
+    try {
+      const [rows]: any = await pool.query(
+        'SELECT COUNT(*) as count FROM telegram_bot_logs WHERE telegram_user_id = ? AND DATE(created_at) = CURDATE()',
+        [userId]
+      );
+      return rows[0]?.count || 0;
+    } catch (err: any) {
+      logger.error('Failed to get user daily download count', { error: err.message });
+    }
+  }
+
+  // Fallback: count from memory
+  const today = new Date().toISOString().split('T')[0];
+  return memoryTelegramLogs.filter(
+    (l) =>
+      l.telegram_user_id === userId &&
+      l.created_at &&
+      l.created_at.toISOString().startsWith(today)
+  ).length;
 }

@@ -72,30 +72,59 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
           script: |
             cd ~/instagrab
 
-            # Pull latest code
+            # ──── Pull latest code ────
             echo "📥 Pulling latest changes..."
             git pull origin main
 
-            # Backend
+            # ──── Write Backend .env from GitHub Secrets if configured ────
+            if [ -n "${{ secrets.BACKEND_ENV }}" ]; then
+              echo "🔒 Writing backend/.env from GitHub Secrets..."
+              cat > backend/.env << 'ENVEOF'
+${{ secrets.BACKEND_ENV }}
+ENVEOF
+              chmod 600 backend/.env
+              echo "✅ backend/.env updated securely from GitHub Secrets."
+            else
+              echo "ℹ️  BACKEND_ENV secret not set in GitHub; preserving existing backend/.env on server."
+            fi
+
+            # ──── Write Frontend .env.local ────
+            if [ ! -f "frontend/.env.local" ]; then
+              echo "⚙️ Writing frontend/.env.local..."
+              echo "NEXT_PUBLIC_API_URL=/api" > frontend/.env.local
+            fi
+
+            # ──── Backend ────
             echo "📦 Installing backend dependencies..."
             cd backend
-            npm install --omit=dev
+            npm install
             npm run build
             cd ..
 
-            # Frontend
+            # ──── Frontend ────
             echo "📦 Installing frontend dependencies..."
             cd frontend
             npm install
             NEXT_PUBLIC_API_URL=/api npm run build
             cd ..
 
-            # Restart services with PM2
+            # ──── Update yt-dlp to latest binary ────
+            echo "📥 Updating yt-dlp to latest release..."
+            sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+            sudo chmod a+rx /usr/local/bin/yt-dlp
+            echo "yt-dlp: $(yt-dlp --version)"
+
+            # ──── Restart PM2 ────
             echo "🔄 Restarting PM2 processes..."
             pm2 reload ecosystem.config.js --update-env || pm2 start ecosystem.config.js
             pm2 save
 
+            echo ""
+            echo "================================================"
             echo "✅ Deployment complete!"
+            echo "================================================"
+            pm2 status

@@ -40,13 +40,22 @@ export const config = {
     host: process.env.DB_HOST || '127.0.0.1',
     port: parseInt(process.env.DB_PORT || '3306', 10),
     user: process.env.DB_USER || 'instagrab',
-    password: process.env.DB_PASSWORD || 'instagrab_secure_pass_123',
+    password: process.env.DB_PASSWORD || 'dev_password_change_me',
     database: process.env.DB_NAME || 'instagrab_db',
   },
 
   admin: {
-    secretKey: process.env.ADMIN_JWT_SECRET || 'instagrab_admin_secret_key_2026_super_secure',
+    secretKey: process.env.ADMIN_JWT_SECRET || 'dev_jwt_secret_change_in_production',
     username: process.env.ADMIN_USERNAME || 'admin',
-    password: process.env.ADMIN_PASSWORD || 'admin12345',
+    password: process.env.ADMIN_PASSWORD || 'change_me_in_env',
+  },
+
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    botEnabled: process.env.TELEGRAM_BOT_ENABLED === 'true',
+    maxFileSize: parseInt(process.env.TELEGRAM_MAX_FILE_SIZE_MB || '50', 10),
+    welcomeMessage:
+      process.env.TELEGRAM_WELCOME_MSG ||
+      '👋 Hey {{name}}! Welcome to InstaGrab Bot!\n\n📥 Just send me an Instagram reel or post link and I\'ll download it for you.\n\n🎬 You can choose between Video or Audio format.\n\nTry it now! Paste an Instagram link below 👇',
   },
 } as const;

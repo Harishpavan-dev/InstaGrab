@@ -14,6 +14,7 @@ import routes from './routes';
 import { startCleanupWorker } from './workers/cleanupWorker';
 import { downloadService } from './services/downloadService';
 import { initDb } from './db/mysql';
+import { telegramBotManager } from './telegram/botManager';
 
 import { ipAndMaintenanceGuard } from './middleware/ipAndMaintenanceGuard';
 
@@ -63,11 +64,25 @@ const server = app.listen(config.port, async () => {
 
   // Clean temp files from previous runs
   downloadService.cleanupAllTempFiles();
+
+  // Start Telegram bot if enabled and token is configured
+  if (config.telegram.botEnabled && config.telegram.botToken) {
+    try {
+      await telegramBotManager.start();
+    } catch (err: any) {
+      logger.error('Failed to start Telegram bot on startup', { error: err.message });
+    }
+  } else {
+    logger.info('Telegram bot is disabled or token not configured. Skipping bot startup.');
+  }
 });
 
 // Graceful shutdown
 const shutdown = (signal: string) => {
   logger.info(`${signal} received, shutting down gracefully...`);
+
+  // Stop Telegram bot
+  telegramBotManager.stop().catch(() => {});
 
   server.close(() => {
     logger.info('HTTP server closed');
