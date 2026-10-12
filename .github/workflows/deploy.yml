@@ -66,6 +66,25 @@ jobs:
     needs: [test-backend, build-frontend]
     if: github.ref == 'refs/heads/main'
     steps:
+      - name: Setup Node.js for Deployment
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Prepare Backend Environment
+        id: prep_env
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          if [ -n "$BACKEND_ENV" ]; then
+            B64=$(node -e 'console.log(Buffer.from(process.env.BACKEND_ENV).toString("base64"))')
+            echo "has_env=true" >> "$GITHUB_OUTPUT"
+            echo "env_b64=$B64" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_env=false" >> "$GITHUB_OUTPUT"
+            echo "env_b64=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -81,11 +100,9 @@ jobs:
             git pull origin main
 
             # ──── Write Backend .env from GitHub Secrets if configured ────
-            if [ -n "${{ secrets.BACKEND_ENV }}" ]; then
+            if [ "${{ steps.prep_env.outputs.has_env }}" = "true" ]; then
               echo "🔒 Writing backend/.env from GitHub Secrets..."
-              cat > backend/.env << 'ENVEOF'
-${{ secrets.BACKEND_ENV }}
-ENVEOF
+              echo "${{ steps.prep_env.outputs.env_b64 }}" | base64 -d > backend/.env
               chmod 600 backend/.env
               echo "✅ backend/.env updated securely from GitHub Secrets."
             else
