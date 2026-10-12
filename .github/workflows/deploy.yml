@@ -3,7 +3,7 @@ name: 🚀 Deploy InstaGrab
 on:
   push:
     branches: [main]
-  workflow_dispatch: # Manual trigger option
+  workflow_dispatch: # Manual trigger 
 
 env:
   NODE_VERSION: '20'
