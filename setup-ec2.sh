@@ -65,10 +65,12 @@ echo "🐬 [3/12] Configuring MySQL Database..."
 DB_NAME="instagrab_db"
 DB_USER="instagrab"
 
+# Use a fixed default password so it stays consistent across re-runs
+# and matches the DB_PASSWORD in the GitHub Actions BACKEND_ENV secret
 if [ -f "$BACKEND_ENV" ] && grep -q "DB_PASSWORD=" "$BACKEND_ENV"; then
     DB_PASSWORD=$(grep "DB_PASSWORD=" "$BACKEND_ENV" | cut -d '=' -f2)
 else
-    DB_PASSWORD="${DB_PASSWORD:-instagrab_secure_pass_$(openssl rand -hex 4)}"
+    DB_PASSWORD="instagrab_secure_pass_123"
 fi
 
 sudo mysql -e "CREATE DATABASE IF NOT EXISTS ${DB_NAME};"
