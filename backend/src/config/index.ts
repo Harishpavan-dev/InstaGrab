@@ -1,7 +1,8 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Try backend/.env first then fall back to project root .env
+// Load backend/.env explicitly (priority), then fallback to root .env
+// We use override:false so first loaded values are preserved
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
@@ -39,8 +40,9 @@ export const config = {
   db: {
     host: process.env.DB_HOST || '127.0.0.1',
     port: parseInt(process.env.DB_PORT || '3306', 10),
-    user: process.env.DB_USER || 'instagrab',
-    password: process.env.DB_PASSWORD || 'dev_password_change_me',
+    user: process.env.DB_USER || 'root',
+    // Use ?? so empty string (XAMPP no-password) is preserved, not overridden by fallback
+    password: process.env.DB_PASSWORD ?? '',
     database: process.env.DB_NAME || 'instagrab_db',
   },
 

@@ -115,11 +115,13 @@ export async function initDb(): Promise<void> {
       await pool.query(`ALTER TABLE telegram_bot_settings ADD COLUMN bot_token VARCHAR(255) DEFAULT NULL`);
     } catch {}
 
-    // Seed default settings if not exists
-    await pool.query(`
-      INSERT IGNORE INTO telegram_bot_settings (id, bot_enabled, welcome_message, max_daily_downloads_per_user, allowed_formats)
-      VALUES (1, TRUE, '👋 Hey {{name}}! Welcome to **InstaGrab Bot**!\n\n📥 Just send me an Instagram reel or post link and I\'ll download it for you.\n\n🎬 You can choose between **Video** or **Audio** format.\n\nTry it now! Paste an Instagram link below 👇', 20, 'video,audio');
-    `);
+    // Seed default settings if not exists (use parameterized query to safely handle apostrophes)
+    const defaultWelcome = "👋 Hey {{name}}! Welcome to **InstaGrab Bot**!\n\n📥 Just send me an Instagram reel or post link and I'll download it for you.\n\n🎬 You can choose between **Video** or **Audio** format.\n\nTry it now! Paste an Instagram link below 👇";
+    await pool.query(
+      `INSERT IGNORE INTO telegram_bot_settings (id, bot_enabled, welcome_message, max_daily_downloads_per_user, allowed_formats)
+       VALUES (1, TRUE, ?, 20, 'video,audio')`,
+      [defaultWelcome]
+    );
 
     isDbConnected = true;
     logger.info('MySQL database connected and tables initialized successfully');
