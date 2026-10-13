@@ -111,7 +111,7 @@ export function MainDownloader({ toolType = "video" }: MainDownloaderProps) {
          fetchInfo(newUrl);
        }
     } else {
-       // Clear output if user types something invalid after a fetch
+       // Clear output if user types 
        if (videoInfo || job || error) {
          setVideoInfo(null);
          setJob(null);
